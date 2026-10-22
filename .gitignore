@@ -7,3 +7,4 @@ __pycache__/
 dpo_pairs.jsonl
 .DS_Store
 *.log
+.probe_cache/
