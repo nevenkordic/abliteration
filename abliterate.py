@@ -114,8 +114,14 @@ def load_prompts(n_train: int, n_test: int) -> tuple[list[str], list[str], list[
 def probe_prompts(n_train: int, n_probes: int) -> list[str]:
     """Fresh harmful prompts (past the ones used for the direction) for selecting
     the layer and strength, so the test split stays fully held out."""
-    tail = _read_prompts(DATA_DIR / "harmful_behaviors_train.csv")[n_train : n_train + n_probes]
-    return tail or load_prompts(n_train, n_probes)[2]
+    pool = _read_prompts(DATA_DIR / "harmful_behaviors_train.csv")
+    tail = pool[n_train : n_train + n_probes]
+    if not tail:
+        raise ValueError(
+            f"no unused training prompts remain for layer/strength probes; "
+            f"reduce --n-train below {len(pool)} to keep the test set held out"
+        )
+    return tail
 
 
 def chat_encode(tokenizer, prompts: list[str], device: torch.device):
@@ -247,6 +253,10 @@ def main() -> int:
 
 
 def run(args) -> None:
+    # Validate the selection pool before downloading/loading the model. Never
+    # fall back to the held-out test split when the training pool is exhausted.
+    probe = probe_prompts(args.n_train, min(24, args.n_test))
+
     from transformers import AutoModelForCausalLM, AutoTokenizer
     from transformers.utils import logging as hf_logging
 
@@ -296,7 +306,6 @@ def run(args) -> None:
 
     # ---- 5. shortlist -------------------------------------------------------
     banner("5 · Shortlist the layers", "cheap hook preview ranks the candidates; real edits decide in the next step")
-    probe = probe_prompts(args.n_train, min(24, args.n_test))
     if args.layer is not None:
         shortlist = [args.layer]
         print(f"using user-specified layer {args.layer}")
